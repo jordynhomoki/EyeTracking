@@ -1,0 +1,221 @@
+---
+title: "Eye Tracking Analyses"
+author: "Jordyn Homoki"
+output: html_document
+---
+
+```{r}
+library(tidyverse)
+library(ggplot2)
+library(gtsummary)
+library(writexl)
+```
+
+## Data Importing and Cleaning
+
+```{r}
+# path to directory containing eye tracking comparison files
+dirs <- c("C:/Users/Jordyn Homoki/Documents/BCH/VWM/VideoCoding/Reliability Comparison")
+
+# list of all files -- determined by prefix "LCC"
+files <- unlist(lapply(dirs, function(path) {
+  list.files(path = path, pattern = "^LCC.*\\.xlsx$", full.names = TRUE)
+}))
+```
+
+```{r}
+# function for establishing new file variables, extracting info for all trials, then combining into a single data frame
+data_proccess <- function(file_path) {
+  data <- read_excel(file_path)
+  Subject <- as.character(str_split(file_path, "/")[[1]][9])
+  data <- data |>
+    mutate(`Manual L` = ifelse(`Manual Looking %` > 100, `Manual L` / `Manual Looking %` * 100, `Manual L`),
+           `Manual R` = ifelse(`Manual Looking %` > 100, `Manual R` / `Manual Looking %` * 100, `Manual R`),
+           `Error L` = truncate_perc(abs(`Python L` - `Manual L`) / `Block Time` * 100),
+           `Error R` = truncate_perc(abs(`Python R` - `Manual R`) / `Block Time` * 100),
+           `Error Total` = truncate_perc(abs((`Python L` + `Python R`) - (`Manual L` + `Manual R`)) / `Block Time` * 100),
+           `Directional Error L` = truncate_dirperc((`Python L` - `Manual L`) / `Block Time` * 100),
+           `Directional Error R` = truncate_dirperc((`Python R` - `Manual R`) / `Block Time` * 100),
+           `Directional Error Total` = truncate_dirperc(((`Python L` + `Python R`) - (`Manual L` + `Manual R`)) / `Block Time` * 100),
+           Age = factor(str_split(Subject, "_")[[1]][3], levels = c("1yo", "2yo", "3yo"), labels = c("1yo", "2yo", "3yo")),
+           Treatment = factor(ifelse(str_split(Subject, "_")[[1]][2] < 2000, "Intervention", "Control"), levels = c("Control", "Intervention"), labels = c("Control", "Intervention"))) |>
+    droplevels()
+  Subject <- as.factor(Subject)
+  data <- cbind(Subject, data)
+  return(data)
+}
+
+# function to truncate variable to given %
+truncate_perc <- function(x) {
+  pmin(pmax(x, 0), 100)
+}
+
+# function to truncate variable to given directional %
+truncate_dirperc <- function(x) {
+  pmin(pmax(x, -100), 100)
+}
+
+comb <- lapply(files, data_proccess)
+comb_dat <- bind_rows(comb)
+```
+
+## Mean Error Analysis
+
+```{r}
+# testing trial GE with respect to 10% error threshold
+threshl <- t.test(comb_dat$`Error L`, alternative = "less", mu = 15)
+threshr <- t.test(comb_dat$`Error R`, alternative = "less", mu = 15)
+threshtot <- t.test(comb_dat$`Error Total`, alternative = "less", mu = 15)
+threshl
+threshr
+threshtot
+```
+
+```{r}
+dirl <- t.test(comb_dat$`Directional Error L`, alternative = "two.sided", mu = 0)
+dirr <- t.test(comb_dat$`Directional Error R`, alternative = "two.sided", mu = 0)
+dirtot <- t.test(comb_dat$`Directional Error Total`, alternative = "two.sided", mu = 0)
+dirl
+dirr
+dirtot
+```
+
+```{r}
+# testing GE difference between ages
+agel <- t.test(comb_dat$`Error L` ~ comb_dat$Age)
+ager <- t.test(comb_dat$`Error R` ~ comb_dat$Age)
+agetot <- t.test(comb_dat$`Error Total` ~ comb_dat$Age)
+agel
+ager
+agetot
+
+diragel <- t.test(comb_dat$`Directional Error L` ~ comb_dat$Age)
+dirager <- t.test(comb_dat$`Directional Error R` ~ comb_dat$Age)
+diragetot <- t.test(comb_dat$`Directional Error Total` ~ comb_dat$Age)
+diragel
+dirager
+diragetot
+```
+
+```{r}
+# testing GE difference between treatments
+trtl <- t.test(comb_dat$`Error L` ~ comb_dat$Treatment)
+trtr <- t.test(comb_dat$`Error R` ~ comb_dat$Treatment)
+trttot <- t.test(comb_dat$`Error Total` ~ comb_dat$Treatment)
+trtl
+trtr
+trttot
+
+dirtrtl <- t.test(comb_dat$`Directional Error L` ~ comb_dat$Treatment)
+dirtrtr <- t.test(comb_dat$`Directional Error R` ~ comb_dat$Treatment)
+dirtrttot <- t.test(comb_dat$`Directional Error Total` ~ comb_dat$Treatment)
+dirtrtl
+dirtrtr
+dirtrttot
+```
+
+```{r}
+# testing GE difference between left and right
+lvsr <- t.test(comb_dat$`Error L`, comb_dat$`Error R`, paired = TRUE)
+dirlvsr <- t.test(comb_dat$`Directional Error L`, comb_dat$`Directional Error R`, paired = TRUE)
+lvsr
+dirlvsr
+```
+
+## Average Runtime
+
+```{r}
+# path to directory containing eye tracking comparison files
+code_dirs <- c("C:/Users/Jordyn Homoki/Documents/BCH/VWM/VideoCoding/VWM")
+
+# list of all files -- determined by prefix "LCC"
+code_files <- unlist(lapply(code_dirs, function(path) {
+  list.files(path = path, pattern = "^LCC.*\\JH.xlsx$", full.names = TRUE)
+}))
+```
+
+```{r}
+# extract eye tracker runtime
+runtime <- function(file_path) {
+  data <- read_excel(file_path) |>
+    select(Runtime) |>
+    mutate(`Runtime (s)` = Runtime) |>
+    select(`Runtime (s)`) |>
+    drop_na()
+  return(data)
+}
+
+runtime_dat <- lapply(code_files, runtime)
+runtime_dat <- bind_rows(runtime_dat)
+```
+
+## Tables/Visuals
+
+```{r}
+# Table 1a: Summary per subject; add number of subjects as a row when outputted to Excel
+data_sub <- comb_dat |>
+  group_by(Subject) |>
+  summarize(`Trials Completed` = n(), Age = unique(Age), Treatment = unique(Treatment), `Error L (%)` = sum(`Error L`) / n(), `Error R (%)` = sum(`Error R`) / n(), `Error Total (%)` = sum(`Error Total`) / n(), `Directional Error L (%)` = sum(`Directional Error L`) / n(), `Directional Error R (%)` = sum(`Directional Error R`) / n(), `Directional Error Total (%)` = sum(`Directional Error Total`) / n(), `Trial Duration (s)` = sum(`Block Time`) / n(), `Task Duration (s)` = sum(c(`Block Time`, 12 * (n() - 6), 30 * 6)))
+data_sub <- cbind(data_sub, runtime_dat)
+
+table1a <- data_sub |>
+  dplyr::select(-Subject) |>
+  tbl_summary(type = list(where(is.numeric) ~ "continuous"),
+              statistic = list(all_categorical() ~ "{n} ({p}%)",
+                               all_continuous() ~ "{mean} ({sd})"),
+              digits = list(all_categorical() ~ c(0,1),
+                            all_continuous() ~ c(2,2)),
+              missing = "no")
+table1a
+```
+
+```{r}
+# write to excel
+write_xlsx(table1a |> as_tibble(), "C:/Users/Jordyn Homoki/Documents/HarvardCourses/Culminating Experience/Table1a.xlsx")
+```
+
+```{r}
+# Table 1b: Summary per trial; add number of trials as a row when outputted to Excel
+data_trial <- comb_dat |>
+  summarize(Age = Age, Treatment = Treatment, `Error L (%)` = `Error L`, `Error R (%)` = `Error R`, `Error Total (%)` = `Error Total`, `Directional Error L (%)` = `Directional Error L`, `Directional Error R (%)` = `Directional Error R`, `Directional Error Total (%)` = `Directional Error Total`, `Trial Duration (s)` = `Block Time`)
+
+table1b <- data_trial |>
+  tbl_summary(type = list(where(is.numeric) ~ "continuous"),
+              statistic = list(all_categorical() ~ "{n} ({p}%)",
+                               all_continuous() ~ "{mean} ({sd})"),
+              digits = list(all_categorical() ~ c(0,1),
+                            all_continuous() ~ c(2,2)),
+              missing = "no")
+table1b
+```
+
+```{r}
+# write to excel
+write_xlsx(table1b |> as_tibble(), "C:/Users/Jordyn Homoki/Documents/HarvardCourses/Culminating Experience/Table1b.xlsx")
+```
+
+```{r}
+# Table 2: combined t-test results
+outputs <- list("<15%: GE Left" = threshl, "<15%: GE Right" = threshr, "<15%: GE Total" = threshtot, "Directional: GE Left" = dirl, "Directional: GE Right" = dirr, "Directional: GE Total" = dirtot, "Age: GE Left" = agel, "Age: GE Right" = ager, "Age: GE Total" = agetot, "Age: Directional Left" = diragel, "Age: Directional Right" = dirager, "Age: Directional Total" = diragetot, "Treatment: GE Left" = trtl, "Treatment: GE Right" = trtr, "Treatment: GE Total" = trttot, "Treatment: Directional Left" = dirtrtl, "Treatment: Directional Right" = dirtrtr, "Treatment: Directional Total" = dirtrttot, "Left v. Right: GE" = lvsr, "Left v. Right: Directional" = dirlvsr)
+
+# extract output info from each t-test
+extract_ttest_info <- function(test, df_name) {
+  tibble(
+    Test = df_name,
+    Method = test$method,
+    Estimate = round(if(length(test$estimate) > 1) diff(rev(test$estimate)) else test$estimate, 3),
+    `95% CI: Lower Limit` = round(test$conf.int[1], 3),
+    `95% CI: Upper Limit` = round(test$conf.int[2], 3),
+    `p-Value` = round(test$p.value, 3)
+  )
+}
+
+# apply to all outputs
+table2 <- bind_rows(Map(extract_ttest_info, outputs, names(outputs)))
+table2
+```
+
+```{r}
+# write to excel
+write_xlsx(table2 |> as_tibble(), "C:/Users/Jordyn Homoki/Documents/HarvardCourses/Culminating Experience/Table2.xlsx")
+```

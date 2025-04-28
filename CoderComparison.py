@@ -73,27 +73,32 @@ mLeft, mRight = blockLooks(manual)
 # dictionaries holding python code left and right looking times for a given block
 pLeft, pRight = blockLooks(python)
 
-# extract looking % per block from python code
-lookPerc = {}
+# extract looking % per block from python code and compute for manual code
+lookPercPy = {}
+lookPercMC = {}
+blockTime = {}
 block = 0
 for index, row in python.iterrows():
-    if row["Looking %"] != "":
+    if row["Block Time"] != "":
         block += 1
-        lookPerc[block] = row["Looking %"]
+        #lookPercPy[block] = row["Looking %"]
+        lookPercPy[block] = round(((pLeft[block] + pRight[block]) / row["Block Time"]) * 100, 1)
+        lookPercMC[block] = round(((mLeft[block] + mRight[block]) / row["Block Time"]) * 100, 1)
+        blockTime[block] = row["Block Time"]
 
 # difference in left/right looks between manual and python code blocks
 # difference is with respect to manual code (i.e., manual - python)
 diffLeft = {}
 diffRight = {}
 for block in list(mLeft.keys()):
-    diffLeft[block] = mLeft[block] - pLeft[block]
-    diffRight[block] = mRight[block] - pRight[block]
+    diffLeft[block] = round(mLeft[block] - pLeft[block], 3)
+    diffRight[block] = round(mRight[block] - pRight[block], 3)
 
 # write Excel output file
 fileName = "_".join(sys.argv[1].split("\\")[-1].split("_")[0:4]) + "_Comparison.xlsx"
 df = pd.DataFrame({"Manual L": mLeft, "Python L": pLeft, "Difference L": diffLeft,
                    "Manual R": mRight, "Python R": pRight, "Difference R": diffRight,
-                   "": np.nan, "Looking % (Python)": lookPerc})
+                   "Manual Looking %": lookPercMC, "Python Looking %": lookPercPy, "Block Time": blockTime})
 writer = pd.ExcelWriter(fileName, engine='xlsxwriter')
 df.to_excel(writer, index=True, index_label="Block", sheet_name="Comparison")
 
