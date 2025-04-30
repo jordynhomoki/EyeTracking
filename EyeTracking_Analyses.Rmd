@@ -8,6 +8,7 @@ output: html_document
 library(tidyverse)
 library(ggplot2)
 library(gtsummary)
+library(readxl)
 library(writexl)
 ```
 
@@ -57,6 +58,33 @@ truncate_dirperc <- function(x) {
 
 comb <- lapply(files, data_proccess)
 comb_dat <- bind_rows(comb)
+```
+
+## EDA/Plots
+
+```{r}
+temp <- comb_dat |>
+  pivot_longer(c(`Error L`, `Error R`, `Error Total`, `Directional Error L`, `Directional Error R`, `Directional Error Total`), names_to = "Type", values_to = "Error") |>
+  mutate(Direction = factor(case_when(str_detect(Type, "L$") ~ "Left",
+                                      str_detect(Type, "R$") ~ "Right",
+                                      str_detect(Type, "Total$") ~ "Total")),
+         `GE Type` = factor(case_when(str_detect(Type, "^Error") ~ "Generalized Error",
+                                         TRUE ~ "Directional Generalized Error"),
+                            labels = c("Generalized Error", "Directional Generalized Error"),
+                            levels = c("Generalized Error", "Directional Generalized Error"))) |>
+  dplyr::select(Age, Treatment, Error, Direction, `GE Type`)
+
+ggplot(data = temp, aes(x = Age, y = Error, fill = Direction)) +
+  facet_wrap(~ `GE Type`) +
+  geom_boxplot() +
+  labs(title = "Exploratory Data Analysis of GE by Age",
+       y = "Error (%)")
+
+ggplot(data = temp, aes(x = Treatment, y = Error, fill = Direction)) +
+  facet_wrap(~ `GE Type`) +
+  geom_boxplot() +
+  labs(title = "Exploratory Data Analysis of GE by Treatment",
+       y = "Error (%)")
 ```
 
 ## Mean Error Analysis
